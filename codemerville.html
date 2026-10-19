@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cleanliness is next to godliness</title>
+<meta name="theme-color" content="#ff6b8a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Clean-Off">
+<style>
+:root{--bg:#fff8ec;--card:#ffffff;--ink:#2b2340;--mute:#6d6485;--line:#eadfc8;--accent:#ff6b8a;--accent2:#27b3a3;--hl:#fff0b8}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1730;--card:#272142;--ink:#f6efe0;--mute:#b3a9cf;--line:#3a3360;--accent:#ff7f9c;--accent2:#4fd1c0;--hl:#4a3f12}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif}
+main{max-width:860px;margin:0 auto;padding:max(20px,env(safe-area-inset-top)) 16px 40px}
+h1{font-size:clamp(1.7rem,6vw,2.5rem);margin:0;line-height:1.15;text-align:center}
+.sub{color:var(--mute);margin:8px 0 0;text-align:center}
+.tag{margin:14px 0;padding:10px 14px;border:2px dashed var(--accent);border-radius:16px;text-align:center;font-style:italic}
+h2{font-size:1.2rem;margin:26px 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;text-align:center;transition:transform .15s}
+.card:hover{transform:rotate(-1deg) scale(1.02)}
+.emo{font-size:2.2rem;display:inline-block;animation:wig 3s ease-in-out infinite}
+@keyframes wig{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+.task{font-weight:700;margin:4px 0 2px}
+.who{font-size:1.3rem;color:var(--accent);font-weight:800}
+.d{font-size:.85rem;color:var(--mute)}
+.card label{display:block;margin-top:8px;color:var(--mute);font-size:.9rem;cursor:pointer}
+.card.done{border-color:var(--accent2)}
+.card.done .who{text-decoration:line-through;color:var(--accent2)}
+.mine{outline:3px solid var(--accent);outline-offset:-3px}
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:16px}
+table{border-collapse:collapse;width:100%;min-width:520px}
+th,td{padding:10px 8px;text-align:center;border-bottom:1px solid var(--line)}
+th{font-size:.85rem}
+td:first-child,th:first-child{text-align:left;padding-left:14px;white-space:nowrap}
+tr.now td{background:var(--hl);font-weight:700}
+tr:last-child td{border-bottom:0}
+.rules{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 18px 6px 36px}
+.rules li{margin:8px 0}
+.bar{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:12px}
+select,input[type=text],button{font:inherit;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+button{cursor:pointer;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+details{margin-top:22px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px 16px}
+summary{cursor:pointer;font-weight:700}
+details .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+details input{flex:1;min-width:200px}
+#status{font-size:.85rem;color:var(--mute)}
+footer{margin-top:24px;text-align:center;color:var(--mute);font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<h1>✨ Cleanliness is next to godliness ✨</h1>
+<p class="sub" id="wk">Week of …</p>
+<div class="tag" id="tag"></div>
+<div class="bar">
+ <span>I’m <select id="me"></select></span>
+ <span id="mine"></span>
+ <span id="status">⚪ connecting…</span>
+</div>
+
+<h2>🧽 This week’s heroes</h2>
+<div class="grid" id="now"></div>
+<p class="sub" id="brk"></p>
+
+<h2>🗓️ This week and next</h2>
+<div class="wrap"><table id="tbl"></table></div>
+
+<h2>📜 The Sacred Flat Rules</h2>
+<ol class="rules">
+<li>Wash your own dishes. Sink sculptures are not art.</li>
+<li>Can’t do your week? Swap with a flatmate, and tell the group chat.</li>
+</ol>
+
+<details>
+ <summary>✏️ Edit flatmates</summary>
+ <div class="row">
+  <input type="text" id="names" aria-label="Flatmate names, comma separated">
+  <button id="save">Save</button>
+ </div>
+ <p class="d">Comma-separated, at least 3 names. The rota rotates in this order, and everyone sees the change live.</p>
+</details>
+
+<footer>The rota shifts every Monday, so nobody is stuck with the bins forever 🗑️<br>📱 Tip: add this page to your phone’s home screen to use it like an app</footer>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, onSnapshot, setDoc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ============ 1. PASTE YOUR FIREBASE CONFIG HERE ============
+   Firebase console > Project settings > Your apps > Web app > Config */
+const firebaseConfig = {
+  apiKey: "AIzaSyCN_aXaR3F5jhkb3VSdmKMsLSz-b1p5fOA",
+  authDomain: "big-cleaning-f8331.firebaseapp.com",
+  projectId: "big-cleaning-f8331",
+  appId: "1:997495848344:web:97c578ce58bf4d655b7fed"
+};
+/* ============================================================ */
+
+const live = !String(firebaseConfig.apiKey).startsWith("PASTE");
+const DEFAULT_NAMES = ["Alex", "Kristine", "Varun", "Lexi"];
+const TASKS = [
+  {e:"🍳", n:"Kitchen Commander", d:"Hob, counters, sink, microwave"},
+  {e:"🧹", n:"Floor Wrangler", d:"Vacuum + mop the hallway, kitchen and living room floors"},
+  {e:"🗑️", n:"Bin Baron", d:"Take out the trash + recycling"}
+];
+const TAGS = ["Dust bunnies fear you.","Scrub now, nap later.","Sparkle is a lifestyle.","A tidy flat is a happy flat.","Mop like nobody’s watching.","The crumbs end here."];
+const START = new Date(2026, 9, 19); // Monday 19 Oct 2026 = week 0
+
+let state = { names: DEFAULT_NAMES.slice(), done: {} };
+let ref = null;
+
+const $ = id => document.getElementById(id);
+const mod = (a, n) => ((a % n) + n) % n;
+const fmt = d => d.toLocaleDateString("en-IE", {day:"numeric", month:"short"});
+function monday(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+const widx = m => Math.round((m - START) / 604800000);
+const who = (t, w) => state.names[mod(t + w, state.names.length)];
+const breakers = w => state.names.filter((_, i) => mod(i - w, state.names.length) >= TASKS.length);
+function el(tag, props, html){ const e = document.createElement(tag); Object.assign(e, props||{}); if(html!=null) e.innerHTML = html; return e; }
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function setStatus(ok, msg){
+  $("status").textContent = !live ? "⚪ demo mode (add Firebase config)" : ok ? "🟢 live" : "🔴 offline" + (msg ? ": " + msg : "");
+}
+
+function render(){
+  const m0 = monday(new Date()), w0 = widx(m0), end = new Date(m0);
+  end.setDate(end.getDate() + 6);
+  $("wk").textContent = "Week of " + fmt(m0) + " – " + fmt(end);
+  $("tag").textContent = TAGS[mod(w0, TAGS.length)];
+
+  const me = $("me").value || localStorage.getItem("whoami") || "";
+  $("me").innerHTML = '<option value="">pick your name</option>' + state.names.map(n => '<option>' + esc(n) + '</option>').join("");
+  $("me").value = state.names.includes(me) ? me : "";
+
+  const now = $("now"); now.innerHTML = "";
+  TASKS.forEach((t, i) => {
+    const key = "w" + w0 + "_t" + i, w = who(i, w0), done = !!state.done[key];
+    const c = el("div", {className: "card" + (done ? " done" : "")});
+    c.dataset.who = w;
+    c.innerHTML = '<div class="emo">' + t.e + '</div><div class="task">' + t.n + '</div><div class="who">' + esc(w) + '</div><div class="d">' + t.d + '</div><label><input type="checkbox"' + (done ? " checked" : "") + '> Done!</label>';
+    c.querySelector("input").onchange = e => toggle(key, e.target.checked);
+    now.appendChild(c);
+  });
+  const b = breakers(w0);
+  $("brk").textContent = b.length ? "🛋️ On a break this week: " + b.join(", ") : "";
+
+  let h = "<tr><th>Week</th>" + TASKS.map(t => "<th>" + t.e + " " + t.n + "</th>").join("") + "<th>🛋️ Break</th></tr>";
+  for (let k = 0; k < 2; k++) {
+    const s = new Date(m0); s.setDate(s.getDate() + 7 * k);
+    h += '<tr' + (k === 0 ? ' class="now"' : '') + '><td>' + fmt(s) + (k === 0 ? " ⭐" : "") + '</td>' +
+      TASKS.map((t, i) => '<td data-who="' + esc(who(i, w0 + k)) + '">' + esc(who(i, w0 + k)) + '</td>').join("") +
+      '<td>' + (esc(breakers(w0 + k).join(", ")) || "–") + '</td></tr>';
+  }
+  $("tbl").innerHTML = h;
+
+  const sel = $("me").value, jobs = [];
+  document.querySelectorAll("[data-who]").forEach(x => x.classList.toggle("mine", !!sel && x.dataset.who === sel));
+  TASKS.forEach((t, i) => { if (who(i, w0) === sel) jobs.push(t.e + " " + t.n); });
+  $("mine").textContent = sel ? (jobs.length ? "→ your job: " + jobs.join(", ") : "→ you’re on a break 🎉") : "";
+  if (document.activeElement !== $("names")) $("names").value = state.names.join(", ");
+}
+
+function saveLocal(){ try { localStorage.setItem("rota-local", JSON.stringify(state)); } catch(e){} }
+
+async function toggle(key, on){
+  if (on) state.done[key] = true; else delete state.done[key];
+  render();
+  if (!ref) return saveLocal();
+  try { await updateDoc(ref, { ["done." + key]: on ? true : deleteField() }); }
+  catch(e){ setStatus(false, e.code || e.message); }
+}
+
+async function saveNames(){
+  const names = $("names").value.split(",").map(s => s.trim()).filter(Boolean);
+  if (names.length < TASKS.length) { alert("Please enter at least " + TASKS.length + " names."); return; }
+  state.names = names; render();
+  if (!ref) return saveLocal();
+  try { await updateDoc(ref, { names }); }
+  catch(e){ setStatus(false, e.code || e.message); }
+}
+
+$("me").onchange = () => { try { localStorage.setItem("whoami", $("me").value); } catch(e){} render(); };
+$("save").onclick = saveNames;
+
+async function start(){
+  if (!live) {
+    try { const s = JSON.parse(localStorage.getItem("rota-local") || "null"); if (s && s.names) state = s; } catch(e){}
+    setStatus(false); render(); return;
+  }
+  setStatus(false); render();
+  try {
+    const app = initializeApp(firebaseConfig);
+    await signInAnonymously(getAuth(app));
+    ref = doc(getFirestore(app), "flat", "rota");
+    onSnapshot(ref, snap => {
+      if (!snap.exists()) { setDoc(ref, { names: DEFAULT_NAMES, done: {} }); return; }
+      const d = snap.data();
+      state = { names: (d.names && d.names.length >= TASKS.length) ? d.names : DEFAULT_NAMES, done: d.done || {} };
+      setStatus(true); render();
+    }, err => setStatus(false, err.code || err.message));
+  } catch(e) { setStatus(false, e.code || e.message); }
+}
+start();
+</script>
+</body>
+</html>
