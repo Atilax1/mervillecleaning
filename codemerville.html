@@ -87,7 +87,7 @@ footer{margin-top:24px;text-align:center;color:var(--mute);font-size:.9rem}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
 import { getFirestore, doc, onSnapshot, setDoc, updateDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ============ 1. PASTE YOUR FIREBASE CONFIG HERE ============
@@ -195,7 +195,6 @@ async function start(){
   setStatus(false); render();
   try {
     const app = initializeApp(firebaseConfig);
-    await signInAnonymously(getAuth(app));
     ref = doc(getFirestore(app), "flat", "rota");
     onSnapshot(ref, snap => {
       if (!snap.exists()) { setDoc(ref, { names: DEFAULT_NAMES, done: {} }); return; }
