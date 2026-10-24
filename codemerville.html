@@ -46,6 +46,8 @@ summary{cursor:pointer;font-weight:700}
 details .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 details input{flex:1;min-width:200px}
 #status{font-size:.85rem;color:var(--mute)}
+button.ghost{background:transparent;color:var(--mute);border-color:var(--line);font-weight:400;margin-top:6px}
+.sw{font-size:.8rem;color:var(--accent2);font-weight:700}
 footer{margin-top:24px;text-align:center;color:var(--mute);font-size:.9rem}
 </style>
 </head>
@@ -70,8 +72,22 @@ footer{margin-top:24px;text-align:center;color:var(--mute);font-size:.9rem}
 <h2>📜 The Sacred Flat Rules</h2>
 <ol class="rules">
 <li>Wash your own dishes. Sink sculptures are not art.</li>
-<li>Can’t do your week? Swap with a flatmate, and tell the group chat.</li>
+<li>Can’t do your week? Agree a swap with a flatmate, hit <b>🔄 Swap jobs</b> below, and tell the group chat.</li>
 </ol>
+
+<details id="swp">
+ <summary>🔄 Swap jobs</summary>
+ <div class="row">
+  <select id="swA" aria-label="First flatmate"></select>
+  <span>⇄</span>
+  <select id="swB" aria-label="Second flatmate"></select>
+  <select id="swW" aria-label="Week"></select>
+  <button id="swGo">Swap</button>
+ </div>
+ <p class="d" id="swInfo"></p>
+ <p class="d">Swaps whatever each of you has that week (a job or a break). Swap the same pair again to undo it. Everyone sees it live.</p>
+ <button class="ghost" id="swReset">Reset all swaps for that week</button>
+</details>
 
 <details>
  <summary>✏️ Edit flatmates</summary>
@@ -110,7 +126,7 @@ const TASKS = [
 const TAGS = ["Dust bunnies fear you.","Scrub now, nap later.","Sparkle is a lifestyle.","A tidy flat is a happy flat.","Mop like nobody’s watching.","The crumbs end here."];
 const START = new Date(2026, 9, 19); // Monday 19 Oct 2026 = week 0
 
-let state = { names: DEFAULT_NAMES.slice(), done: {} };
+let state = { names: DEFAULT_NAMES.slice(), done: {}, swaps: {} };
 let ref = null;
 
 const $ = id => document.getElementById(id);
@@ -118,8 +134,11 @@ const mod = (a, n) => ((a % n) + n) % n;
 const fmt = d => d.toLocaleDateString("en-IE", {day:"numeric", month:"short"});
 function monday(d){ const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
 const widx = m => Math.round((m - START) / 604800000);
-const who = (t, w) => state.names[mod(t + w, state.names.length)];
-const breakers = w => state.names.filter((_, i) => mod(i - w, state.names.length) >= TASKS.length);
+const skey = (w, t) => "w" + w + "_t" + t;
+const base = (t, w) => state.names[mod(t + w, state.names.length)];
+const who = (t, w) => { const s = state.swaps[skey(w, t)]; return s && state.names.includes(s) ? s : base(t, w); };
+const swapped = (t, w) => who(t, w) !== base(t, w);
+const breakers = w => state.names.filter(n => !TASKS.some((_, i) => who(i, w) === n));
 function el(tag, props, html){ const e = document.createElement(tag); Object.assign(e, props||{}); if(html!=null) e.innerHTML = html; return e; }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
@@ -142,7 +161,7 @@ function render(){
     const key = "w" + w0 + "_t" + i, w = who(i, w0), done = !!state.done[key];
     const c = el("div", {className: "card" + (done ? " done" : "")});
     c.dataset.who = w;
-    c.innerHTML = '<div class="emo">' + t.e + '</div><div class="task">' + t.n + '</div><div class="who">' + esc(w) + '</div><div class="d">' + t.d + '</div><label><input type="checkbox"' + (done ? " checked" : "") + '> Done!</label>';
+    c.innerHTML = '<div class="emo">' + t.e + '</div><div class="task">' + t.n + '</div><div class="who">' + esc(w) + '</div><div class="d">' + t.d + '</div>' + (swapped(i, w0) ? '<div class="sw">🔄 swapped</div>' : '') + '<label><input type="checkbox"' + (done ? " checked" : "") + '> Done!</label>';
     c.querySelector("input").onchange = e => toggle(key, e.target.checked);
     now.appendChild(c);
   });
@@ -153,7 +172,7 @@ function render(){
   for (let k = 0; k < 2; k++) {
     const s = new Date(m0); s.setDate(s.getDate() + 7 * k);
     h += '<tr' + (k === 0 ? ' class="now"' : '') + '><td>' + fmt(s) + (k === 0 ? " ⭐" : "") + '</td>' +
-      TASKS.map((t, i) => '<td data-who="' + esc(who(i, w0 + k)) + '">' + esc(who(i, w0 + k)) + '</td>').join("") +
+      TASKS.map((t, i) => '<td data-who="' + esc(who(i, w0 + k)) + '">' + esc(who(i, w0 + k)) + (swapped(i, w0 + k) ? " 🔄" : "") + '</td>').join("") +
       '<td>' + (esc(breakers(w0 + k).join(", ")) || "–") + '</td></tr>';
   }
   $("tbl").innerHTML = h;
@@ -162,6 +181,17 @@ function render(){
   document.querySelectorAll("[data-who]").forEach(x => x.classList.toggle("mine", !!sel && x.dataset.who === sel));
   TASKS.forEach((t, i) => { if (who(i, w0) === sel) jobs.push(t.e + " " + t.n); });
   $("mine").textContent = sel ? (jobs.length ? "→ your job: " + jobs.join(", ") : "→ you’re on a break 🎉") : "";
+  const keep = id => $(id).value;
+  const [pa, pb, pw] = [keep("swA"), keep("swB"), keep("swW")];
+  const opts = '<option value="">pick…</option>' + state.names.map(n => '<option>' + esc(n) + '</option>').join("");
+  $("swA").innerHTML = opts; $("swB").innerHTML = opts;
+  $("swA").value = state.names.includes(pa) ? pa : (sel || "");
+  $("swB").value = state.names.includes(pb) ? pb : "";
+  const m1 = new Date(m0); m1.setDate(m1.getDate() + 7);
+  $("swW").innerHTML = '<option value="0">This week (' + fmt(m0) + ')</option><option value="1">Next week (' + fmt(m1) + ')</option>';
+  $("swW").value = pw === "1" ? "1" : "0";
+  const sw = w0 + +$("swW").value, bk = breakers(sw);
+  $("swInfo").textContent = "That week: " + TASKS.map((t, i) => t.e + " " + who(i, sw)).join(" · ") + (bk.length ? " · 🛋️ " + bk.join(", ") : "");
   if (document.activeElement !== $("names")) $("names").value = state.names.join(", ");
 }
 
@@ -172,6 +202,36 @@ async function toggle(key, on){
   render();
   if (!ref) return saveLocal();
   try { await updateDoc(ref, { ["done." + key]: on ? true : deleteField() }); }
+  catch(e){ setStatus(false, e.code || e.message); }
+}
+
+function swapWeek(){ return widx(monday(new Date())) + +$("swW").value; }
+
+async function doSwap(){
+  const a = $("swA").value, b = $("swB").value, w = swapWeek();
+  if (!a || !b || a === b) { alert("Pick two different flatmates."); return; }
+  const idx = TASKS.map((_, i) => i);
+  const mineA = idx.filter(i => who(i, w) === a), mineB = idx.filter(i => who(i, w) === b);
+  if (!mineA.length && !mineB.length) { alert("You're both on a break that week, nothing to swap!"); return; }
+  const upd = {};
+  const set = (i, n) => {
+    const k = skey(w, i);
+    if (n === base(i, w)) { delete state.swaps[k]; upd["swaps." + k] = deleteField(); }
+    else { state.swaps[k] = n; upd["swaps." + k] = n; }
+  };
+  mineA.forEach(i => set(i, b)); mineB.forEach(i => set(i, a));
+  render();
+  if (!ref) return saveLocal();
+  try { await updateDoc(ref, upd); }
+  catch(e){ setStatus(false, e.code || e.message); }
+}
+
+async function resetSwaps(){
+  const w = swapWeek(), upd = {};
+  TASKS.forEach((_, i) => { const k = skey(w, i); if (k in state.swaps) { delete state.swaps[k]; upd["swaps." + k] = deleteField(); } });
+  render();
+  if (!ref || !Object.keys(upd).length) return saveLocal();
+  try { await updateDoc(ref, upd); }
   catch(e){ setStatus(false, e.code || e.message); }
 }
 
@@ -186,10 +246,13 @@ async function saveNames(){
 
 $("me").onchange = () => { try { localStorage.setItem("whoami", $("me").value); } catch(e){} render(); };
 $("save").onclick = saveNames;
+$("swGo").onclick = doSwap;
+$("swReset").onclick = resetSwaps;
+$("swW").onchange = render;
 
 async function start(){
   if (!live) {
-    try { const s = JSON.parse(localStorage.getItem("rota-local") || "null"); if (s && s.names) state = s; } catch(e){}
+    try { const s = JSON.parse(localStorage.getItem("rota-local") || "null"); if (s && s.names) state = Object.assign({ done: {}, swaps: {} }, s); } catch(e){}
     setStatus(false); render(); return;
   }
   setStatus(false); render();
@@ -197,9 +260,9 @@ async function start(){
     const app = initializeApp(firebaseConfig);
     ref = doc(getFirestore(app), "flat", "rota");
     onSnapshot(ref, snap => {
-      if (!snap.exists()) { setDoc(ref, { names: DEFAULT_NAMES, done: {} }); return; }
+      if (!snap.exists()) { setDoc(ref, { names: DEFAULT_NAMES, done: {}, swaps: {} }); return; }
       const d = snap.data();
-      state = { names: (d.names && d.names.length >= TASKS.length) ? d.names : DEFAULT_NAMES, done: d.done || {} };
+      state = { names: (d.names && d.names.length >= TASKS.length) ? d.names : DEFAULT_NAMES, done: d.done || {}, swaps: d.swaps || {} };
       setStatus(true); render();
     }, err => setStatus(false, err.code || err.message));
   } catch(e) { setStatus(false, e.code || e.message); }
